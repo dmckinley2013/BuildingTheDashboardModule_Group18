@@ -50,9 +50,3 @@ services:
     image: mongo:latest
     ports:
       - "27017:27017"
-  dashboard_module:
-    build: ./DockerFile/ConsumerDemo/Dashboard
-    depends_on:
-      - mongo
-    environment:
-      MONGO_URL: mongodb://mongo:27017/
