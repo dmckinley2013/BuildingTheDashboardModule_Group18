@@ -1,10 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sqlite3
 import pika
 from bson import BSON
 from threading import Thread
 from datetime import datetime
+import database
 import logging
 import os
 
@@ -18,7 +18,7 @@ class DashboardApp(tk.Tk):
 
         self.setup_ui()
         self.init_db()
-        self.load_messages()
+        database.load_messages(self)
         self.start_consuming_thread()
 
     def setup_ui(self):
@@ -31,7 +31,7 @@ class DashboardApp(tk.Tk):
         button_frame = tk.Frame(self)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        clear_button = tk.Button(button_frame, text="Clear All Messages", command=self.clear_all_messages)
+        clear_button = tk.Button(button_frame, text="Clear All Messages", command=database.clear_all_messages())
         clear_button.pack(side=tk.RIGHT)
 
         columns = ("Time", "JobID", "ContentID", "ContentType", "FileName", "Status", "Message")
@@ -54,14 +54,6 @@ class DashboardApp(tk.Tk):
         self.tree.configure(yscrollcommand=scrollbar.set)
 
         self.tree.bind("<Double-1>", self.on_item_click)
-
-    def init_db(self):
-        self.conn = sqlite3.connect("messages.db")
-        cursor = self.conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS messages
-                          (id INTEGER PRIMARY KEY, time TEXT, job_id TEXT, 
-                           content_id TEXT, content_type TEXT, file_name TEXT, status TEXT, message TEXT)''')
-        self.conn.commit()
 
     def start_consuming_thread(self):
         thread = Thread(target=self.consume_messages)
@@ -88,27 +80,10 @@ class DashboardApp(tk.Tk):
             logging.info(f"Received new message: {decoded_body}")
             logging.info(f"Routing key: {method.routing_key}")
             
-            self.save_message_to_db(decoded_body)
+            database.save_message(decoded_body)
             self.display_message(decoded_body)
         except Exception as e:
             logging.error(f"Error processing message: {e}")
-
-    def save_message_to_db(self, message):
-        conn = sqlite3.connect("messages.db")
-        cursor = conn.cursor()
-
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        job_id = message.get('ID', 'Unknown JobID')
-        content_id, content_type = self.get_content_info(message)
-        file_name = message.get('FileName', 'Unknown File')
-        status = message.get('Status', 'Unknown Status')
-        message_text = message.get('Message', 'No message')
-
-        cursor.execute('''INSERT INTO messages (time, job_id, content_id, content_type, file_name, status, message)
-                          VALUES (?, ?, ?, ?, ?, ?, ?)''', 
-                          (timestamp, job_id, content_id, content_type, file_name, status, message_text))
-        conn.commit()
-        conn.close()
 
     def get_content_info(self, message):
         if 'DocumentId' in message:
@@ -123,9 +98,7 @@ class DashboardApp(tk.Tk):
             return 'Unknown ContentID', 'Unknown Type'
 
     def load_messages(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT time, job_id, content_id, content_type, file_name, status, message FROM messages")
-        rows = cursor.fetchall()
+        rows = database.load_messages(self)
         for row in rows:
             self.tree.insert("", tk.END, values=row)
 
@@ -166,15 +139,6 @@ class DashboardApp(tk.Tk):
         
         text.config(state=tk.DISABLED)
 
-    def clear_all_messages(self):
-        if messagebox.askyesno("Clear All Messages", "Are you sure you want to clear all messages?"):
-            self.tree.delete(*self.tree.get_children())
-            conn = sqlite3.connect("messages.db")
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM messages")
-            conn.commit()
-            conn.close()
-            logging.info("All messages cleared")
 
 if __name__ == "__main__":
     app = DashboardApp()

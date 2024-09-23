@@ -1,6 +1,3 @@
-# docker-compose.yml
-version: '3'  
-
 services:
   rabbitmq_tshark:
     build:
@@ -54,7 +51,7 @@ services:
     ports:
       - "27017:27017"
   dashboard_module:
-    build: ./DockerFile/Dashboard_Module
+    build: ./DockerFile/ConsumerDemo/Dashboard
     depends_on:
       - mongo
     environment:
