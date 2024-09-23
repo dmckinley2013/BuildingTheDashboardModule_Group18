@@ -48,3 +48,14 @@ services:
       rabbitmq_tshark:
         condition: service_healthy
     command: ["python", "setup.py"]
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+  dashboard_module:
+    build: ./DockerFile/Dashboard_Module
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URL: mongodb://mongo:27017/
