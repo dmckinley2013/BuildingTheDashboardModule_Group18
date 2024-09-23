@@ -17,7 +17,6 @@ class DashboardApp(tk.Tk):
         self.geometry("1200x600")
 
         self.setup_ui()
-        self.init_db()
         database.load_messages(self)
         self.start_consuming_thread()
 
@@ -31,7 +30,7 @@ class DashboardApp(tk.Tk):
         button_frame = tk.Frame(self)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        clear_button = tk.Button(button_frame, text="Clear All Messages", command=database.clear_all_messages())
+        clear_button = tk.Button(button_frame, text="Clear All Messages", command=database.clear_all_messages)
         clear_button.pack(side=tk.RIGHT)
 
         columns = ("Time", "JobID", "ContentID", "ContentType", "FileName", "Status", "Message")
