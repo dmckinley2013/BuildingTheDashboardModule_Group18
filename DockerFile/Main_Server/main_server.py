@@ -7,20 +7,21 @@ import random
 import logging
 from pymongo import MongoClient
 
+
 # Connect to MongoDB
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient('mongodb://admin:admin@127.0.0.1:27017/', serverSelectionTimeoutMS=5000)
 db = client["dashboard_db"]
 messages_collection = db["messages"]
 
 
 def compute_unique_id(data_object):
     # Convert the object to a string
-    data_str = str(bson.dumps(data_object))
+    data_str = bson.encode(data_object)
 
     # Append the current date and time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
-    combined_data = data_str + current_time + str(random.random())
+    combined_data = str(data_str) + current_time + str(random.random())
 
     # Generate SHA-256 hash
     unique_id = hashlib.sha256(combined_data.encode()).hexdigest()
@@ -31,14 +32,8 @@ def compute_unique_id(data_object):
 def send_bson_obj(job):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(("localhost", 12345))  # Ensure this line is present and correctly written
-    s.sendall(bson.dumps(job))
+    s.sendall(bson.encode(job))
     s.close()
-
-
-def save_message_to_mongo(job):
-    """Save the entire job to MongoDB."""
-    result = messages_collection.insert_one(job)
-    logging.info(f"Message inserted with ID: {result.inserted_id}")
 
 
 def id_generator(job):
@@ -140,8 +135,6 @@ if __name__ == "__main__":
         job["Audio"][1]["FileName"] = f.name
         f.close()
     id_generator(job)
-
-    save_message_to_mongo(job)
 
     logging.info(f"Documents: {len(job['Documents'])}")
     logging.info(f"Images: {len(job['Images'])}")

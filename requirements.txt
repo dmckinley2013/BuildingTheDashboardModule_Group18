@@ -1,4 +1,3 @@
-bson
 pika
 unittest2  # For unittest support if needed beyond the standard library
 spacy
