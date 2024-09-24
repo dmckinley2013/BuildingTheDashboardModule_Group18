@@ -3,7 +3,7 @@ import bson  # Binary JSON format
 import threading  # For handling multiple clients concurrently
 import pika  # RabbitMQ client library
 from pika.exchange_type import ExchangeType
-from copy import deepcopy  # Import deepcopy if you need a deep copy
+
 
 def recvall(sock, expected_length):
     data = b''
@@ -14,6 +14,7 @@ def recvall(sock, expected_length):
         data += more_data
     return data
 
+
 def handle_client(client):
     # Initially, receive the length of the BSON document (first 4 bytes)
     length_data = client.recv(4)
@@ -23,16 +24,16 @@ def handle_client(client):
 
     # Determine the expected length of the BSON document
     expected_length = int.from_bytes(length_data, byteorder='little')
-    
+
     # Receive the rest of the BSON document based on its length
     bson_data = length_data + recvall(client, expected_length - 4)
 
     try:
-        obj = bson.loads(bson_data)
+        obj = bson.BSON.decode(bson_data)  # Correct decoding method
         parse_bson_obj(obj)
     except Exception as e:
         print(f"Error decoding BSON: {e}")
-   
+
 
 def parse_bson_obj(obj):
     # Dictionary mapping data types to routing keys
@@ -40,16 +41,17 @@ def parse_bson_obj(obj):
         'Documents': '.Document.',
         'Images': '.Image.',
         'Audio': '.Audio.',
-        'Video': '.Video.'  # Add this line
+        'Video': '.Video.'
     }
-    
+
     # Iterate through each data type and publish relevant items
     for data_type, routing_key in data_types.items():
-        if obj[data_type]:
+        if obj.get(data_type):  # Check if the data type exists in the BSON object
             for item in obj[data_type]:
                 publish_to_rabbitmq(routing_key, item)
         else:
             print(f"No {data_type.lower()} to send")
+
 
 # Function to publish messages to RabbitMQ
 def publish_to_rabbitmq(routing_key, message):
@@ -61,46 +63,24 @@ def publish_to_rabbitmq(routing_key, message):
         # Create a channel for communication with RabbitMQ
         channel = connection.channel()
 
-        #prepping status message
+        # Prepping status message
         status_message = message.copy()
-        del status_message['Payload'] #remove payload from status message
-        status_message['Status'] = 'Preprocessed Successfully' 
-        status_message['Message'] = 'Message has been preprocessed and sent to the respective queues' 
-
-        
-        status_message=bson.dumps(status_message)
+        del status_message['Payload']  # Remove payload from status message
+        status_message['Status'] = 'Preprocessed Successfully'
+        status_message['Message'] = 'Message has been preprocessed and sent to the respective queues'
 
         # Serialize the message to BSON
-        message = bson.dumps(message)
+        message = bson.BSON.encode(message)
+        status_message = bson.BSON.encode(status_message)
 
-        '''
-            Sample message  to be sent to the respective queues
-            {
-                "ID": "ObjectID",  
-                "DocumentId": "ObjectID",
-                "DocumentType": "String",
-                "FileName": "String",
-                "Payload": "String"
-            }
-        '''
         # Publish the message to the specified routing key
         channel.basic_publish(
             exchange="Topic",
             routing_key=routing_key,
             body=message
         )
-        '''
-        This will be sent to the dashboard
-            {
-                "ID": "ObjectID",  
-                "DocumentId": "ObjectID",
-                "DocumentType": "String",
-                "FileName": "String",
-                "Status": "Preprocessed Successfully",
-                "Message": "String"
-            }
-        '''
-        #publish status message to dashboard
+
+        # Publish status message to dashboard
         channel.basic_publish(
             exchange="Topic",
             routing_key=".Status.",
@@ -108,49 +88,36 @@ def publish_to_rabbitmq(routing_key, message):
         )
 
     except Exception as e:
-        '''
-        This will be sent to the dashboard
-            {
-                "ID": "ObjectID",  
-                "DocumentId": "ObjectID",
-                "DocumentType": "String",
-                "FileName": "String",
-                "Status": "Preprocessing Failed",
-                "Message": "String"
-            }
-        '''
+        # Handle publishing failure
         status_message = message.copy()
         del status_message['Payload']
         status_message['Status'] = 'Preprocessing Failed'
-        status_message['Message'] = e
-        status_message=bson.dumps(status_message)
+        status_message['Message'] = str(e)
+        status_message = bson.BSON.encode(status_message)
         channel.basic_publish(
             exchange="Topic",
             routing_key=".Status.",
-            body= status_message
+            body=status_message
         )
-    # Close the connection to RabbitMQ
-    connection.close()
+    finally:
+        connection.close()
+
 
 # Function to start a socket server and listen for incoming BSON objects
 def receive_bson_obj():
     # Create a TCP/IP socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        # Bind the socket to localhost on port 12345
         s.bind(('localhost', 12345))
-        # Listen for incoming connections
         s.listen()
 
         # Continuously accept new connections
         while True:
-            # Accept a connection
             conn, addr = s.accept()
             print('Connected by', addr)
-            # Handle each client connection in a separate thread
             threading.Thread(target=handle_client, args=(conn,)).start()
-    
+
 
 # Main function to start the server
 if __name__ == '__main__':
     receive_bson_obj()
-    print("all message send")
+    print("all messages sent")
