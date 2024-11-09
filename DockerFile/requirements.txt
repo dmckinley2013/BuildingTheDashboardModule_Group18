@@ -1,0 +1,29 @@
+# Core Dependencies
+pika==1.3.2
+pymongo==4.9.1
+websockets==13.1
+blinker==1.8.2
+Flask==3.0.3
+Flask-PyMongo==2.3.0
+Flask-SocketIO==5.3.6
+python-socketio==5.11.3
+python-engineio==4.9.1
+requests==2.31.0
+# Add these to your existing requirements.txt
+aiohttp==3.9.3  # Required for async HTTP requests
+urllib3==2.2.1  # Required for requests
+nest-asyncio==1.6.0  # For handling async operations
+python-socketio[client]==5.9.0
+# Database and Data Handling
+dnspython==2.6.1  
+
+# Development Tools
+python-dateutil==2.9.0.post0
+
+# Optional dependencies - commented out for now to debug core functionality
+# Machine Learning and Processing
+# spacy==3.5.4
+# en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.5.0/en_core_web_lg-3.5.0-py3-none-any.whl
+
+# Image Processing
+# Pillow==10.3.0
