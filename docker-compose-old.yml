@@ -1,8 +1,11 @@
-version: "3"
+# docker-compose.yml
+version: '3'  
+
 services:
   rabbitmq_tshark:
     build:
       context: DockerFile/rabbitmq_with_terminal_shark/.
+
     image: rabbitmq_tshark:latest
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -10,6 +13,8 @@ services:
       timeout: 10s
       retries: 3
     privileged: true
+    hostname: 1845ab38a1eb
+    mac_address: 02:42:ac:11:00:02
     environment:
       - PATH=/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - ERLANG_INSTALL_PATH_PREFIX=/opt/erlang
@@ -34,8 +39,6 @@ services:
       - "5671:5671"
       - "5672:5672"
       - "5552:5552"
-    networks:
-      - app-network
 
   setup-python:
     build:
@@ -45,48 +48,3 @@ services:
       rabbitmq_tshark:
         condition: service_healthy
     command: ["python", "setup.py"]
-    networks:
-      - app-network
-
-  mongodb:
-    build:
-      context: DockerFile/mongodb/.
-    image: mongo:latest
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    volumes:
-      - /mongodb:/data/db
-    ports:
-      - "27017:27017"
-    networks:
-      - app-network
-
-  app-stack:
-    build:
-      context: DockerFile/applicationstack/
-      dockerfile: Dockerfile
-    hostname: app-stack
-    container_name: app-stack
-    ports:
-      - "3000:3000"
-      - "5001:5001"
-      - "5002:5002"
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017/dashboard_db
-      - RABBITMQ_HOST=rabbitmq_tshark
-      - NODE_ENV=production
-      - REACT_APP_SOCKET_URL=ws://app-stack:5001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://app-stack:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge

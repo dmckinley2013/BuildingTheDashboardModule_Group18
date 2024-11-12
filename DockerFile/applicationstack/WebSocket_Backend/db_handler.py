@@ -1,5 +1,4 @@
 from pymongo import MongoClient
-from bson import BSON
 from datetime import datetime
 import logging
 
@@ -14,7 +13,8 @@ class DBHandler:
     def init_db(self):
         """Initialize database connection."""
         try:
-            self.client = MongoClient('mongodb://localhost:27017/')
+            # Use the service name from docker-compose
+            self.client = MongoClient('mongodb://mongodb:27017/')
             self.db = self.client['dashboard_db']
             self.collection = self.db['messages']
             logging.info("Connected to MongoDB successfully")
@@ -28,9 +28,9 @@ class DBHandler:
             # Debug log the incoming message
             logging.info(f"Attempting to save message: {message}")
             
-            # If message is BSON, decode it
+            # If message is bytes, decode it to string
             if isinstance(message, bytes):
-                message = BSON(message).decode()
+                message = message.decode('utf-8')
 
             # Extract or generate the timestamp
             timestamp = message.get('time')
@@ -114,3 +114,8 @@ class DBHandler:
             logging.info(f"Cleared {result.deleted_count} invalid messages from MongoDB")
         except Exception as e:
             logging.error(f"Failed to clear invalid messages: {e}")
+            
+    def close(self):
+        """Close the MongoDB connection."""
+        if self.client:
+            self.client.close()

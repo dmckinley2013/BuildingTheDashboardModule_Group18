@@ -11,7 +11,7 @@ commands = [
     ("python parse.py", os.path.join(base_dir, "Parser_Module")),
     ("node server.js", os.path.join(base_dir, "WebSocket_Backend")),
     ("python websocket_server.py", os.path.join(base_dir, "WebSocket_Backend")),
-    ("npm start", os.path.join(base_dir, "react_frontend"))
+    ("z", os.path.join(base_dir, "react_frontend"))
 ]
 
 # Store processes for shutdown later
