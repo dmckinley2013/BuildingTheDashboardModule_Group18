@@ -31,34 +31,34 @@ const Dashboard = () => {
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            reconnectionDelay: 1000,
         });
-
+    
         socketRef.current.on('connect', () => {
             console.log('Socket.IO Connected');
             setIsConnected(true);
         });
-
-        socketRef.current.on('disconnect', () => {
-            console.log('Socket.IO Disconnected');
-            setIsConnected(false);
+    
+        socketRef.current.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
         });
-
+    
+        socketRef.current.on('disconnect', (reason) => {
+            console.log('Socket.IO Disconnected:', reason);
+        });
+    
         socketRef.current.on('initialMessages', (data) => {
             console.log('Received initial messages:', data);
             setMessages(data);
-            setLoading(false);
         });
-
+    
         socketRef.current.on('newMessage', (message) => {
             console.log('Received new message:', message);
             setMessages(prev => [message, ...prev]);
         });
-
+    
         return () => {
-            if (socketRef.current) {
-                socketRef.current.disconnect();
-            }
+            socketRef.current.disconnect();
         };
     }, []);
 

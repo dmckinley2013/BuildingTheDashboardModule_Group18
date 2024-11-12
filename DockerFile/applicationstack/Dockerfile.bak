@@ -29,7 +29,7 @@ COPY react_frontend/ /app/react_frontend/
 RUN npm run build --prefix /app/react_frontend/
 
 # Install serve to host the React build
-RUN npm install -g serve 
+RUN npm install serve --prefix /app/react_frontend/
 
 # Create the logs directory and copy backend files
 RUN mkdir -p /app/logs
@@ -38,7 +38,9 @@ COPY WebSocket_Backend/ /app/WebSocket_Backend/
 
 # Force cache-bust for backend npm install by copying package.json separately
 RUN npm install --prefix /app/WebSocket_Backend/ --force
-
+RUN npm cache clean --prefix /app/WebSocket_Backend/ --force
+run rm -rf /app/WebSocket_Backend/node_modules/socket.io/
+RUN npm install socket.io --prefix /app/WebSocket_Backend/ --force
 # Create and configure the startup script
 RUN echo '#!/bin/bash\n\
 # Start the parser module\n\

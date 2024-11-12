@@ -3,6 +3,15 @@ const http = require('http');
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 
+// MongoDB URI and connection options
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongodb:27017/dashboard_db';
+const MONGODB_OPTIONS = {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    socketTimeoutMS: 60000, // Timeout for inactive sockets (60 seconds)
+    connectTimeoutMS: 30000 // Timeout for initial connection (30 seconds)
+};
+
 // Define the MongoDB schema and model
 const messageSchema = new mongoose.Schema({
     time: String,
@@ -12,7 +21,8 @@ const messageSchema = new mongoose.Schema({
     file_name: String,
     status: String,
     message: String
-}, { timestamps: true });
+}, { timestamps: true }); // This enables `createdAt` and `updatedAt` fields
+
 
 const Message = mongoose.model('Message', messageSchema);
 
@@ -20,64 +30,80 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: "*", 
+        origin: "*",
         methods: ["GET", "POST"]
     },
-    pingTimeout: 60000,  // Increased ping timeout
-    connectTimeout: 60000,  // Added connection timeout
-    transports: ['websocket', 'polling']  // Explicitly specify transports
+    pingTimeout: 60000,
+    connectTimeout: 60000,
+    transports: ['websocket', 'polling']
 });
 
 const PORT = process.env.PORT || 5001;
 
-// MongoDB connection configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongodb:27017/dashboard_db';
-const MONGODB_OPTIONS = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-};
-
-// Connect to MongoDB with retry logic
+// MongoDB connection with retry logic
 const connectWithRetry = () => {
-    mongoose.connect(MONGODB_URI)
+    console.log('Attempting to connect to MongoDB...');
+    mongoose.connect(MONGODB_URI, MONGODB_OPTIONS)
         .then(() => {
             console.log('Successfully connected to MongoDB');
         })
-        .catch(err => {
+        .catch((err) => {
             console.error('MongoDB connection error:', err);
             console.log('Retrying connection in 5 seconds...');
             setTimeout(connectWithRetry, 5000);
         });
 };
 
+// Initialize MongoDB connection
 connectWithRetry();
 
 // MongoDB connection event handlers
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected. Attempting to reconnect...');
-    connectWithRetry();
+mongoose.connection.on('connected', () => {
+    console.log('Mongoose connected to MongoDB');
 });
 
 mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error:', err);
+    console.error('Mongoose connection error:', err);
 });
+
+mongoose.connection.on('disconnected', () => {
+    console.log('Mongoose disconnected. Attempting to reconnect...');
+    connectWithRetry();
+});
+
+// Graceful shutdown for MongoDB connection
+const gracefulShutdown = (msg, callback) => {
+    mongoose.connection.close(false, () => {
+        console.log(`Mongoose disconnected through ${msg}`);
+        callback();
+    });
+};
+
+process.on('SIGINT', () => gracefulShutdown('app termination', () => process.exit(0)));
+process.on('SIGTERM', () => gracefulShutdown('Heroku app shutdown', () => process.exit(0)));
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
     console.log('New client connected', socket.id);
 
     // Send connection acknowledgment
-    socket.emit('connect_confirmation', { 
-        status: 'connected', 
-        socketId: socket.id 
+    socket.emit('connect_confirmation', {
+        status: 'connected',
+        socketId: socket.id
     });
 
-    // Fetch all messages from the database on client connection
+    // Fetch initial messages from MongoDB
     const fetchInitialMessages = async () => {
         try {
-            const messages = await Message.find({})
-                .sort({ createdAt: -1 })
-                .limit(100);
+            console.log('Attempting to fetch initial messages from MongoDB...');
+            const messages = await Message.find({}).lean().exec();
+    
+            if (messages.length === 0) {
+                console.warn('No messages found in MongoDB.');
+            } else {
+                console.log(`Fetched ${messages.length} messages from MongoDB`);
+            }
+    
             socket.emit('initialMessages', messages);
             console.log('Initial messages sent to client');
         } catch (err) {
@@ -96,10 +122,9 @@ io.on('connection', (socket) => {
             await newMessage.save();
             io.emit('newMessage', msg); // Broadcast to all clients
             console.log('New message saved and broadcasted:', msg);
-            // Send acknowledgment back to sender
-            socket.emit('messageSaved', { 
-                status: 'success', 
-                message: msg 
+            socket.emit('messageSaved', {
+                status: 'success',
+                message: msg
             });
         } catch (err) {
             console.error('Error saving new message:', err);
@@ -123,7 +148,6 @@ io.on('connection', (socket) => {
             if (updatedMessage) {
                 io.emit('messageUpdated', updatedMessage);
                 console.log('Message updated:', messageId);
-                // Send acknowledgment back to sender
                 socket.emit('updateConfirmation', {
                     status: 'success',
                     messageId: messageId
@@ -149,18 +173,18 @@ io.on('connection', (socket) => {
         console.log(`Client disconnected. Reason: ${reason}`, socket.id);
     });
 
-    // Handle errors
+    // Handle socket errors
     socket.on('error', (error) => {
         console.error('Socket error:', error);
     });
 
-    // Handle ping
+    // Handle ping-pong for connection health checks
     socket.on('ping', () => {
         socket.emit('pong');
     });
 });
 
-// Basic health check endpoint
+// Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'healthy',
@@ -179,25 +203,4 @@ app.use((err, req, res, next) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`MongoDB URI: ${MONGODB_URI}`);
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-    console.log('Received SIGTERM. Performing graceful shutdown...');
-    server.close(() => {
-        mongoose.connection.close(false, () => {
-            console.log('MongoDB connection closed.');
-            process.exit(0);
-        });
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('Received SIGINT. Performing graceful shutdown...');
-    server.close(() => {
-        mongoose.connection.close(false, () => {
-            console.log('MongoDB connection closed.');
-            process.exit(0);
-        });
-    });
 });
