@@ -97,7 +97,8 @@ io.on('connection', (socket) => {
         try {
             console.log('Attempting to fetch initial messages from MongoDB...');
             const messages = await Message.find({}).lean().exec();
-    
+            console.log("Messages fetched for client:", messages);
+
             if (messages.length === 0) {
                 console.warn('No messages found in MongoDB.');
             } else {

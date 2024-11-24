@@ -27,7 +27,7 @@ const Dashboard = () => {
 
     // Socket.IO connection
     useEffect(() => {
-        socketRef.current = io(`http://${window.location.hostname}:5001`, {
+        socketRef.current = io(`http://app-stack:5001`, {
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: 5,
