@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
 import Button from '@mui/material/Button';
+import io from 'socket.io-client';
 
 // Create MetricCard component
 const MetricCard = ({ title, value }) => (
@@ -31,13 +32,45 @@ const Dashboard = () => {
         successRate: 100
     });
 
-    useEffect(() => {
-    socket.on('analytics', (data) => {
-        setPerformanceStats(data.performanceStats);
-        setFileStats(data.fileStats);
-        setSystemHealth(data.systemHealth);
+    // New analytics states
+    const [performanceStats, setPerformanceStats] = useState({
+        averageResponseTime: 0,
+        peakThroughput: 0,
+        currentLoad: 0,
+        uptime: 0
     });
-    }, [socket]);
+
+    const [fileStats, setFileStats] = useState({
+        totalFilesProcessed: 0,
+        fileTypeDistribution: {},
+        largestFileSize: 0,
+        averageFileSize: 0
+    });
+
+    const [systemHealth, setSystemHealth] = useState({
+        activeConnections: 0,
+        queueDepth: 0,
+        memoryUsage: 0,
+        successRate: 100
+    });
+
+    const socket = useRef(null);
+
+    useEffect(() => {
+        socket.current = io('ws://localhost:5001');
+
+        socket.current.on('analytics', (data) => {
+            setPerformanceStats(data.performanceStats);
+            setFileStats(data.fileStats);
+            setSystemHealth(data.systemHealth);
+        });
+
+        return () => {
+            if (socket.current) {
+                socket.current.disconnect();
+            }
+        };
+    }, []);
 
     // Helper function to truncate Content IDs
     const truncateId = (id) => {
