@@ -80,15 +80,15 @@ class WebSocketServer:
                 try:
                     message_data = json.loads(message)
 
-                    json_message = self.convert_bson_to_json(message_data)
-
-                    if json_message.get('type') == 'getAnalytics':
+                    if message_data.get('type') == 'getAnalytics':
                         analytics_data = await self.get_analytics_data()
                         await websocket.send(json.dumps({
                             'type': 'analytics',
                             'data': analytics_data
                         }))
                         continue
+
+                    json_message = self.convert_bson_to_json(message_data)
 
                     # Save the message to the database
                     self.db_handler.save_message_to_db(json_message)
@@ -188,7 +188,6 @@ class WebSocketServer:
         await server.wait_closed()
 
     async def get_analytics_data(self):
-        print("Entered get_analytics_data")
         messages = self.db_handler.load_messages()
 
         analytics = {
