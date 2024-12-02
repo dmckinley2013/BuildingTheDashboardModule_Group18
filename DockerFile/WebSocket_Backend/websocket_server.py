@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime
+
 import websockets
 import json
 import pika
@@ -65,7 +67,7 @@ class WebSocketServer:
             print(f"Error sending initial messages: {e}")
             raise
 
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket):
         try:
             self.connected_clients.add(websocket)
             print(f"Client connected. Total clients: {len(self.connected_clients)}")
@@ -173,6 +175,29 @@ class WebSocketServer:
         
         print("WebSocket server started on ws://localhost:5001")
         await server.wait_closed()
+
+    async def get_analytics_data(self):
+        analytics = {
+            'performanceStats': {
+                'averageResponseTime': await self.db_handler.get_avg_processing_time(),
+                'peakThroughput': await self.db_handler.get_peak_throughput(),
+                'currentLoad': len(self.connected_clients),
+                'uptime': (datetime.now() - self.start_time).total_seconds()
+            },
+            'fileStats': {
+                'totalFilesProcessed': await self.db_handler.get_total_files(),
+                'fileTypeDistribution': await self.db_handler.get_file_distribution(),
+                'largestFileSize': await self.db_handler.get_largest_file_size(),
+                'averageFileSize': await self.db_handler.get_avg_file_size()
+            },
+            'systemHealth': {
+                'activeConnections': len(self.connected_clients),
+                'queueDepth': await self.db_handler.get_queue_depth(),
+                'memoryUsage': psutil.Process().memory_percent(),
+                'successRate': await self.db_handler.get_success_rate()
+            }
+        }
+        return analytics
 
 if __name__ == "__main__":
     server = WebSocketServer()

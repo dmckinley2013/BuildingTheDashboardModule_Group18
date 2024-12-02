@@ -10,6 +10,7 @@ class DBHandler:
         self.client = None
         self.db = None
         self.collection = None
+        self.start_time = datetime.now()
 
     def init_db(self):
         """Initialize database connection."""
@@ -114,3 +115,53 @@ class DBHandler:
             logging.info(f"Cleared {result.deleted_count} invalid messages from MongoDB")
         except Exception as e:
             logging.error(f"Failed to clear invalid messages: {e}")
+
+    async def get_avg_processing_time(self):
+        result = await self.db.analytics.aggregate([
+            {"$group": {"_id": None, "avg_time": {"$avg": "$processing_time"}}}
+        ]).to_list(1)
+        return result[0]["avg_time"] if result else 0
+
+    async def get_peak_throughput(self):
+        # Files processed per minute in peak period
+        pipeline = [
+            {"$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m-%d %H:%M", "date": "$timestamp"}},
+                "count": {"$sum": 1}
+            }},
+            {"$sort": {"count": -1}},
+            {"$limit": 1}
+        ]
+        result = await self.db.analytics.aggregate(pipeline).to_list(1)
+        return result[0]["count"] if result else 0
+
+    async def get_total_files(self):
+        return await self.db.analytics.count_documents({})
+
+    async def get_file_distribution(self):
+        result = await self.db.analytics.aggregate([
+            {"$group": {"_id": "$file_type", "count": {"$sum": 1}}}
+        ]).to_list(None)
+        return {doc["_id"]: doc["count"] for doc in result}
+
+    async def get_largest_file_size(self):
+        result = await self.db.analytics.find_one(
+            sort=[("file_size", -1)]
+        )
+        return result["file_size"] if result else 0
+
+    async def get_avg_file_size(self):
+        result = await self.db.analytics.aggregate([
+            {"$group": {"_id": None, "avg_size": {"$avg": "$file_size"}}}
+        ]).to_list(1)
+        return result[0]["avg_size"] if result else 0
+
+    async def get_queue_depth(self):
+        return await self.db.queue.count_documents({"status": "pending"})
+
+    async def get_success_rate(self):
+        total = await self.db.analytics.count_documents({})
+        if total == 0:
+            return 100
+        success = await self.db.analytics.count_documents({"status": "success"})
+        return (success / total) * 100

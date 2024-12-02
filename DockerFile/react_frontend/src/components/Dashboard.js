@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
+import Button from '@mui/material/Button';
+
+// Create MetricCard component
+const MetricCard = ({ title, value }) => (
+    <div className="metric-card">
+        <h4>{title}</h4>
+        <p>{value}</p>
+    </div>
+);
 
 const Dashboard = () => {
     const [messages, setMessages] = useState([]);
@@ -13,6 +22,22 @@ const Dashboard = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [selectedContentType, setSelectedContentType] = useState('All');
+
+    const [showAnalytics, setShowAnalytics] = useState(false);
+    const [analyticsData, setAnalyticsData] = useState({
+        avgProcessingTime: 0,
+        activeConnections: 0,
+        totalProcessed: 0,
+        successRate: 100
+    });
+
+    useEffect(() => {
+    socket.on('analytics', (data) => {
+        setPerformanceStats(data.performanceStats);
+        setFileStats(data.fileStats);
+        setSystemHealth(data.systemHealth);
+    });
+    }, [socket]);
 
     // Helper function to truncate Content IDs
     const truncateId = (id) => {
@@ -284,6 +309,25 @@ const Dashboard = () => {
                         </div>
                     </div>
                 </div>
+
+                <Button
+                    variant="contained"
+                    onClick={() => setShowAnalytics(!showAnalytics)}
+                >
+                    View Analytics
+                </Button>
+
+                {showAnalytics && (
+                    <div className="analytics-panel">
+                        <h3>System Analytics</h3>
+                        <div className="metrics-grid">
+                            <MetricCard title="Avg Processing Time" value={`${analyticsData.avgProcessingTime}ms`} />
+                            <MetricCard title="Active Connections" value={analyticsData.activeConnections} />
+                            <MetricCard title="Total Processed" value={analyticsData.totalProcessed} />
+                            <MetricCard title="Success Rate" value={`${analyticsData.successRate}%`} />
+                        </div>
+                    </div>
+                )}
             </main>
 
             <footer className="dashboard-footer">
