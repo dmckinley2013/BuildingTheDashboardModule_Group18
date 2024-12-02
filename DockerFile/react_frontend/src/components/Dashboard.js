@@ -49,26 +49,6 @@ const Dashboard = () => {
         memoryUsage: (messages.length * 1024) / (1024 * 1024), // Rough estimate in MB
         successRate: messages.filter(m => m.status === 'Processed').length / messages.length * 100 || 100
     });
-    const socket = useRef(null);
-
-    useEffect(() => {
-        socket.current = new WebSocket('ws://localhost:5001');
-
-        socket.current.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'analytics') {
-                setPerformanceStats(data.performanceStats);
-                setFileStats(data.fileStats);
-                setSystemHealth(data.systemHealth);
-            }
-        };
-
-        return () => {
-            if (socket.current) {
-                socket.current.close();
-            }
-        };
-    }, []);
 
     // Helper function to truncate Content IDs
     const truncateId = (id) => {
@@ -119,38 +99,39 @@ const Dashboard = () => {
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, selectedContentType, itemsPerPage]);
+    const socket = useRef(null);
 
     useEffect(() => {
         const connectWebSocket = () => {
-            ws.current = new WebSocket('ws://localhost:5001');
+            socket.current = new WebSocket('ws://localhost:5001');
 
-            ws.current.onopen = () => {
+            socket.current.onopen = () => {
                 console.log('WebSocket connected');
                 setIsConnected(true);
             };
 
-            ws.current.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log('WebSocket data received:', data);
+            socket.current.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket data received:', data);
 
-                    if (data.type === 'initialMessages') {
-                        setMessages(prevMessages => [...data.data]);
-                        setLoading(false);
-                    } else if (data.type === 'newMessage') {
-                        setMessages(prevMessages => [data.data, ...prevMessages]);
-                    }
-                } catch (err) {
-                    console.error('Failed to parse WebSocket message:', err);
+                if (data.type === 'initialMessages') {
+                    setMessages(prevMessages => [...data.data]);
+                    setLoading(false);
+                } else if (data.type === 'newMessage') {
+                    setMessages(prevMessages => [data.data, ...prevMessages]);
+                } else if (data.type === 'analytics') {
+                    setPerformanceStats(data.performanceStats);
+                    setFileStats(data.fileStats);
+                    setSystemHealth(data.systemHealth);
                 }
             };
 
-            ws.current.onerror = (error) => {
+            socket.current.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 setIsConnected(false);
             };
 
-            ws.current.onclose = () => {
+            socket.current.onclose = () => {
                 console.log('WebSocket disconnected');
                 setIsConnected(false);
                 setTimeout(connectWebSocket, 3000);
@@ -159,13 +140,20 @@ const Dashboard = () => {
 
         connectWebSocket();
 
+        // Set up analytics polling
+        const analyticsInterval = setInterval(() => {
+            if (socket.current && socket.current.readyState === WebSocket.OPEN) {
+                socket.current.send(JSON.stringify({ type: 'getAnalytics' }));
+            }
+        }, 5000);
+
         return () => {
-            if (ws.current) {
-                ws.current.close();
+            clearInterval(analyticsInterval);
+            if (socket.current) {
+                socket.current.close();
             }
         };
     }, []);
-
     const toggleExpandJobId = (jobId) => {
         setExpandedJobIds((prevExpanded) =>
             prevExpanded.includes(jobId) ? prevExpanded.filter(id => id !== jobId) : [...prevExpanded, jobId]

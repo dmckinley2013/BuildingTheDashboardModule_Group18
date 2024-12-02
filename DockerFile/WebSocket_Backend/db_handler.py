@@ -117,13 +117,13 @@ class DBHandler:
             logging.error(f"Failed to clear invalid messages: {e}")
 
     async def get_avg_processing_time(self):
-        result = await self.db.analytics.aggregate([
+        result = await self.db.messages.aggregate([
             {"$group": {"_id": None, "avg_time": {"$avg": "$processing_time"}}}
         ]).to_list(1)
         return result[0]["avg_time"] if result else 0
 
     async def get_peak_throughput(self):
-        # Files processed per minute in peak period
+        # Get messages processed per minute at peak
         pipeline = [
             {"$group": {
                 "_id": {"$dateToString": {"format": "%Y-%m-%d %H:%M", "date": "$timestamp"}},
@@ -132,15 +132,19 @@ class DBHandler:
             {"$sort": {"count": -1}},
             {"$limit": 1}
         ]
-        result = await self.db.analytics.aggregate(pipeline).to_list(1)
+        result = await self.db.messages.aggregate(pipeline).to_list(1)
         return result[0]["count"] if result else 0
+
+    async def get_success_rate(self):
+        total = await self.db.messages.count_documents({})
+        success = await self.db.messages.count_documents({"status": "Processed"})
+        return (success / total * 100) if total > 0 else 100
 
     async def get_total_files(self):
         return await self.db.analytics.count_documents({})
 
     async def get_file_distribution(self):
-        result = await self.db.analytics.aggregate([
-            {"$group": {"_id": "$file_type", "count": {"$sum": 1}}}
+        result = await self.db.analytics.aggregate([            {"$group": {"_id": "$file_type", "count": {"$sum": 1}}}
         ]).to_list(None)
         return {doc["_id"]: doc["count"] for doc in result}
 
