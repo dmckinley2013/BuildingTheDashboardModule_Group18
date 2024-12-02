@@ -13,6 +13,7 @@ class WebSocketServer:
         self.db_handler = DBHandler()
         self.db_handler.init_db()
         self.message_queue = asyncio.Queue()
+        self.start_time = datetime.now()
 
     def convert_bson_to_json(self, data):
         if isinstance(data, bytes):
@@ -78,11 +79,20 @@ class WebSocketServer:
             async for message in websocket:
                 try:
                     message_data = json.loads(message)
+
                     json_message = self.convert_bson_to_json(message_data)
-                    
+
+                    if json_message.get('type') == 'getAnalytics':
+                        analytics_data = await self.get_analytics_data()
+                        await websocket.send(json.dumps({
+                            'type': 'analytics',
+                            'data': analytics_data
+                        }))
+                        continue
+
                     # Save the message to the database
                     self.db_handler.save_message_to_db(json_message)
-                    
+
                     # Put the message in the queue for broadcasting
                     await self.message_queue.put({
                         'type': 'newMessage',
@@ -90,6 +100,7 @@ class WebSocketServer:
                     })
                 except Exception as e:
                     print(f"Error processing message: {e}")
+                    continue
 
         except websockets.ConnectionClosedError:
             print("WebSocket connection closed normally")
@@ -177,27 +188,32 @@ class WebSocketServer:
         await server.wait_closed()
 
     async def get_analytics_data(self):
+        print("Entered get_analytics_data")
+        messages = self.db_handler.load_messages()
+
         analytics = {
             'performanceStats': {
-                'averageResponseTime': await self.db_handler.get_avg_processing_time(),
-                'peakThroughput': await self.db_handler.get_peak_throughput(),
+                'averageResponseTime': 0,  # Will implement these metrics later
+                'peakThroughput': len(messages),
                 'currentLoad': len(self.connected_clients),
                 'uptime': (datetime.now() - self.start_time).total_seconds()
             },
             'fileStats': {
-                'totalFilesProcessed': await self.db_handler.get_total_files(),
-                'fileTypeDistribution': await self.db_handler.get_file_distribution(),
-                'largestFileSize': await self.db_handler.get_largest_file_size(),
-                'averageFileSize': await self.db_handler.get_avg_file_size()
+                'totalFilesProcessed': len(messages),
+                'fileTypeDistribution': {
+                    'Document': sum(1 for m in messages if m.get('content_type') == 'Document'),
+                    'Image': sum(1 for m in messages if m.get('content_type') in ['Image', 'Picture']),
+                    'Audio': sum(1 for m in messages if m.get('content_type') == 'Audio')
+                }
             },
             'systemHealth': {
                 'activeConnections': len(self.connected_clients),
-                'queueDepth': await self.db_handler.get_queue_depth(),
-                'memoryUsage': psutil.Process().memory_percent(),
-                'successRate': await self.db_handler.get_success_rate()
+                'queueDepth': len(messages),
+                'successRate': 100 * sum(1 for m in messages if m.get('status') == 'Processed') / len(messages) if messages else 100  # noqa
             }
         }
         return analytics
+
 
 if __name__ == "__main__":
     server = WebSocketServer()

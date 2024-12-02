@@ -9,12 +9,11 @@ const MetricCard = ({title, value}) => (
         <p>{value}</p>
     </div>
 );
-
 const Dashboard = () => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(false);
-    const ws = useRef(null);
+    const socket = useRef(null);
 
     const [expandedJobIds, setExpandedJobIds] = useState([]);
 
@@ -49,6 +48,19 @@ const Dashboard = () => {
         memoryUsage: (messages.length * 1024) / (1024 * 1024), // Rough estimate in MB
         successRate: messages.filter(m => m.status === 'Processed').length / messages.length * 100 || 100
     });
+
+    const handleAnalyticsClick = () => {
+        if (socket.current?.readyState === WebSocket.OPEN) {
+            socket.current.send(JSON.stringify({type: 'getAnalytics'}));
+        }
+        setShowAnalytics(prev => !prev);
+    };
+
+    useEffect(() => {
+        if (showAnalytics && socket.current?.readyState === WebSocket.OPEN) {
+            socket.current.send(JSON.stringify({type: 'getAnalytics'}));
+        }
+    }, [showAnalytics]);
 
     // Helper function to truncate Content IDs
     const truncateId = (id) => {
@@ -99,7 +111,6 @@ const Dashboard = () => {
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, selectedContentType, itemsPerPage]);
-    const socket = useRef(null);
 
     useEffect(() => {
         const connectWebSocket = () => {
@@ -113,37 +124,24 @@ const Dashboard = () => {
             socket.current.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket data received:', data);
-
-                if (data.type === 'initialMessages') {
+                if (data.type === 'analytics') {
+                    setPerformanceStats(data.performanceStats);
+                    setFileStats(data.fileStats);
+                    setSystemHealth(data.systemHealth);
+                } else if (data.type === 'initialMessages') {
                     setMessages(prevMessages => [...data.data]);
                     setLoading(false);
                 } else if (data.type === 'newMessage') {
                     setMessages(prevMessages => [data.data, ...prevMessages]);
-                } else if (data.type === 'analytics') {
-                    setPerformanceStats(data.performanceStats);
-                    setFileStats(data.fileStats);
-                    setSystemHealth(data.systemHealth);
                 }
-            };
-
-            socket.current.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                setIsConnected(false);
-            };
-
-            socket.current.onclose = () => {
-                console.log('WebSocket disconnected');
-                setIsConnected(false);
-                setTimeout(connectWebSocket, 3000);
             };
         };
 
         connectWebSocket();
 
-        // Set up analytics polling
         const analyticsInterval = setInterval(() => {
-            if (socket.current && socket.current.readyState === WebSocket.OPEN) {
-                socket.current.send(JSON.stringify({ type: 'getAnalytics' }));
+            if (socket.current?.readyState === WebSocket.OPEN) {
+                socket.current.send(JSON.stringify({type: 'getAnalytics'}));
             }
         }, 5000);
 
@@ -332,11 +330,10 @@ const Dashboard = () => {
 
                 <Button
                     variant="contained"
-                    onClick={() => setShowAnalytics(!showAnalytics)}
+                    onClick={handleAnalyticsClick}
                 >
-                    View Analytics
+                    {showAnalytics ? 'Hide Analytics' : 'View Analytics'}
                 </Button>
-
                 {showAnalytics && (
                     <div className="analytics-panel">
                         <h3>System Analytics</h3>

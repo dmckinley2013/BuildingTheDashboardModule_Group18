@@ -168,4 +168,14 @@ class DBHandler:
         if total == 0:
             return 100
         success = await self.db.analytics.count_documents({"status": "success"})
-        return (success / total) * 100
+
+    async def get_analytics_messages(self):
+        try:
+            print(f"Entered get_analytics_messages")
+            messages = await self.db.messages.find().to_list(length=None)
+            print(f"Successfully loaded {len(messages)} messages for analytics")
+            return messages
+        except Exception as e:
+            print(f"Error loading analytics messages: {e}")
+            return []
+
