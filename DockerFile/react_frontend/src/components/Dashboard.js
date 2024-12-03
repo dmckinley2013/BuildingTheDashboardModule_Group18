@@ -49,16 +49,40 @@ const Dashboard = () => {
         successRate: messages.filter(m => m.status === 'Processed').length / messages.length * 100 || 100
     });
 
-    const handleAnalyticsClick = () => {
+    const requestAnalytics = () => {
         if (socket.current?.readyState === WebSocket.OPEN) {
             socket.current.send(JSON.stringify({type: 'getAnalytics'}));
         }
-        setShowAnalytics(prev => !prev);
     };
 
+    const handleAnalyticsClick = (event) => {
+        // Log the event object
+        console.log("Button clicked:", event);
+
+        // Log socket state before sending
+        console.log("Socket state before:", {
+            readyState: socket.current?.readyState,
+            isConnected: isConnected
+        });
+
+        if (socket.current?.readyState === WebSocket.OPEN) {
+            const analyticsRequest = {type: 'getAnalytics'};
+            console.log("Sending request:", analyticsRequest);
+            socket.current.send(JSON.stringify(analyticsRequest));
+        }
+
+        // Log state changes
+        console.log("Current analytics state:", showAnalytics);
+        setShowAnalytics(!showAnalytics);
+        console.log("New analytics state:", !showAnalytics);
+    };
+
+
     useEffect(() => {
-        if (showAnalytics && socket.current?.readyState === WebSocket.OPEN) {
-            socket.current.send(JSON.stringify({type: 'getAnalytics'}));
+        if (showAnalytics) {
+            requestAnalytics();
+            const interval = setInterval(requestAnalytics, 5000);
+            return () => clearInterval(interval);
         }
     }, [showAnalytics]);
 
@@ -125,9 +149,10 @@ const Dashboard = () => {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket data received:', data);
                 if (data.type === 'analytics') {
-                    setPerformanceStats(data.performanceStats);
-                    setFileStats(data.fileStats);
-                    setSystemHealth(data.systemHealth);
+                    const analyticsData = data.data || {};
+                    setPerformanceStats(analyticsData.performanceStats || {});
+                    setFileStats(analyticsData.fileStats || {});
+                    setSystemHealth(analyticsData.systemHealth || {});
                 } else if (data.type === 'initialMessages') {
                     setMessages(prevMessages => [...data.data]);
                     setLoading(false);
@@ -326,39 +351,41 @@ const Dashboard = () => {
                             </button>
                         </div>
                     </div>
-                </div>
 
-                <Button
-                    variant="contained"
-                    onClick={handleAnalyticsClick}
-                >
-                    {showAnalytics ? 'Hide Analytics' : 'View Analytics'}
-                </Button>
-                {showAnalytics && (
-                    <div className="analytics-panel">
-                        <h3>System Analytics</h3>
-                        <div className="metrics-grid">
-                            <div className="metrics-section">
-                                <h4>Performance</h4>
-                                <MetricCard title="Response Time" value={`${performanceStats.averageResponseTime}ms`}/>
-                                <MetricCard title="Peak Throughput" value={performanceStats.peakThroughput}/>
-                                <MetricCard title="Current Load" value={performanceStats.currentLoad}/>
-                            </div>
-                            <div className="metrics-section">
-                                <h4>File Processing</h4>
-                                <MetricCard title="Total Files" value={fileStats.totalFilesProcessed}/>
-                                <MetricCard title="Largest File" value={`${fileStats.largestFileSize} KB`}/>
-                                <MetricCard title="Avg File Size" value={`${fileStats.averageFileSize} KB`}/>
-                            </div>
-                            <div className="metrics-section">
-                                <h4>System Health</h4>
-                                <MetricCard title="Active Connections" value={systemHealth.activeConnections}/>
-                                <MetricCard title="Queue Depth" value={systemHealth.queueDepth}/>
-                                <MetricCard title="Success Rate" value={`${systemHealth.successRate}%`}/>
+                    <Button
+                        variant="contained"
+                        onClick={handleAnalyticsClick}
+                    >
+                        {showAnalytics ? 'Hide Analytics' : 'View Analytics'}
+                    </Button>
+
+                    {showAnalytics && (
+                        <div className="analytics-panel">
+                            <h3>System Analytics</h3>
+                            <div className="metrics-grid">
+                                <div className="metrics-section">
+                                    <h4>Performance</h4>
+                                    <MetricCard title="Response Time"
+                                                value={`${performanceStats.averageResponseTime}ms`}/>
+                                    <MetricCard title="Peak Throughput" value={performanceStats.peakThroughput}/>
+                                    <MetricCard title="Current Load" value={performanceStats.currentLoad}/>
+                                </div>
+                                <div className="metrics-section">
+                                    <h4>File Processing</h4>
+                                    <MetricCard title="Total Files" value={fileStats.totalFilesProcessed}/>
+                                    <MetricCard title="Largest File" value={`${fileStats.largestFileSize} KB`}/>
+                                    <MetricCard title="Avg File Size" value={`${fileStats.averageFileSize} KB`}/>
+                                </div>
+                                <div className="metrics-section">
+                                    <h4>System Health</h4>
+                                    <MetricCard title="Active Connections" value={systemHealth.activeConnections}/>
+                                    <MetricCard title="Queue Depth" value={systemHealth.queueDepth}/>
+                                    <MetricCard title="Success Rate" value={`${systemHealth.successRate}%`}/>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </main>
 
             <footer className="dashboard-footer">

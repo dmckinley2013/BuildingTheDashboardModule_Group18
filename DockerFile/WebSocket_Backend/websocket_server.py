@@ -86,6 +86,7 @@ class WebSocketServer:
                             'type': 'analytics',
                             'data': analytics_data
                         }))
+                        print("Analytics response sent")
                         continue
 
                     json_message = self.convert_bson_to_json(message_data)
