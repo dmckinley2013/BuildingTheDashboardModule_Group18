@@ -25,10 +25,17 @@ const Dashboard = () => {
     const [showAnalytics, setShowAnalytics] = useState(false);
 
     const [performanceStats, setPerformanceStats] = useState({
-        averageResponseTime: messages.reduce((acc, msg) => acc + (new Date(msg.time) - new Date()), 0) / messages.length || 0,
-        peakThroughput: Math.max(...messages.map(m => new Date(m.time).getTime())),
-        currentLoad: messages.filter(m => m.status === 'Processing').length,
-        uptime: new Date() - new Date(messages[0]?.time || new Date())
+        averageResponseTime: 0,
+        cpuUtilization: 0,
+        memoryUsage: 0,
+        currentLoad: 0,
+        uptime: 0,
+        networkStats: {
+            bytesSent: 0,
+            bytesReceived: 0,
+            activeConnections: 0,
+            messageRate: 0
+        }
     });
 
     const [fileStats, setFileStats] = useState({
@@ -37,9 +44,7 @@ const Dashboard = () => {
             Document: messages.filter(m => m.content_type === 'Document').length,
             Image: messages.filter(m => m.content_type === 'Image' || m.content_type === 'Picture').length,
             Audio: messages.filter(m => m.content_type === 'Audio').length
-        },
-        largestFileSize: Math.max(...messages.map(m => m.file_size || 0)),
-        averageFileSize: messages.reduce((acc, msg) => acc + (msg.file_size || 0), 0) / messages.length || 0
+        }
     });
 
     const [systemHealth, setSystemHealth] = useState({
@@ -150,9 +155,10 @@ const Dashboard = () => {
                 console.log('WebSocket data received:', data);
                 if (data.type === 'analytics') {
                     const analyticsData = data.data || {};
-                    setPerformanceStats(analyticsData.performanceStats || {});
-                    setFileStats(analyticsData.fileStats || {});
-                    setSystemHealth(analyticsData.systemHealth || {});
+                    setPerformanceStats(prevStats => ({
+                        ...prevStats,
+                        ...analyticsData.performanceStats
+                    }));
                 } else if (data.type === 'initialMessages') {
                     setMessages(prevMessages => [...data.data]);
                     setLoading(false);
@@ -361,26 +367,39 @@ const Dashboard = () => {
 
                     {showAnalytics && (
                         <div className="analytics-panel">
-                            <h3>System Analytics</h3>
-                            <div className="metrics-grid">
-                                <div className="metrics-section">
-                                    <h4>Performance</h4>
-                                    <MetricCard title="Response Time"
-                                                value={`${performanceStats.averageResponseTime}ms`}/>
-                                    <MetricCard title="Peak Throughput" value={performanceStats.peakThroughput}/>
-                                    <MetricCard title="Current Load" value={performanceStats.currentLoad}/>
+                            <div className="analytics-section">
+                                <h3>System Performance</h3>
+                                <div className="metrics-grid">
+                                    <MetricCard title="CPU Usage" value={`${performanceStats.cpuUtilization}%`}/>
+                                    <MetricCard title="Memory Usage" value={`${performanceStats.memoryUsage}%`}/>
+                                    <MetricCard title="System Load" value={performanceStats.currentLoad}/>
+                                    <MetricCard title="Uptime"
+                                                value={`${Math.floor(performanceStats.uptime / 3600)}h ${Math.floor((performanceStats.uptime % 3600) / 60)}m`}/>
                                 </div>
-                                <div className="metrics-section">
-                                    <h4>File Processing</h4>
+                            </div>
+
+                            <div className="analytics-section">
+                                <h3>Network Performance</h3>
+                                <div className="metrics-grid">
+                                    <MetricCard title="Data Sent"
+                                                value={`${((performanceStats?.networkStats?.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB`}/>
+                                    <MetricCard title="Data Received"
+                                                value={`${((performanceStats?.networkStats?.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB`}/>
+                                    <MetricCard title="Active Connections"
+                                                value={performanceStats?.networkStats?.activeConnections || 0}/>
+                                    <MetricCard title="Messages/sec"
+                                                value={(performanceStats?.networkStats?.messageRate || 0).toFixed(2)}/>
+                                </div>
+                            </div>
+
+                            <div className="analytics-section">
+                                <h3>Processing Statistics</h3>
+                                <div className="metrics-grid">
                                     <MetricCard title="Total Files" value={fileStats.totalFilesProcessed}/>
-                                    <MetricCard title="Largest File" value={`${fileStats.largestFileSize} KB`}/>
-                                    <MetricCard title="Avg File Size" value={`${fileStats.averageFileSize} KB`}/>
-                                </div>
-                                <div className="metrics-section">
-                                    <h4>System Health</h4>
-                                    <MetricCard title="Active Connections" value={systemHealth.activeConnections}/>
+                                    <MetricCard title="Success Rate" value={`${systemHealth.successRate.toFixed(1)}%`}/>
                                     <MetricCard title="Queue Depth" value={systemHealth.queueDepth}/>
-                                    <MetricCard title="Success Rate" value={`${systemHealth.successRate}%`}/>
+                                    <MetricCard title="Avg Response Time"
+                                                value={`${performanceStats.averageResponseTime.toFixed(0)}ms`}/>
                                 </div>
                             </div>
                         </div>

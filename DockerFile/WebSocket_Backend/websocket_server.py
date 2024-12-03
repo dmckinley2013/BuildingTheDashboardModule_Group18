@@ -6,6 +6,8 @@ import json
 import pika
 from bson import BSON, ObjectId
 from db_handler import DBHandler
+import psutil
+
 
 class WebSocketServer:
     def __init__(self):
@@ -25,6 +27,7 @@ class WebSocketServer:
             if 'ID' in data:
                 return {
                     'time': data.get('time', datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p')),
+                    'received_time': datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p'),
                     'job_id': data.get('ID'),
                     'content_id': data.get('DocumentId') or data.get('PictureID') or data.get('AudioID'),
                     'content_type': self._determine_content_type(data),
@@ -137,19 +140,19 @@ class WebSocketServer:
             try:
                 message = BSON(body).decode()
                 json_message = self.convert_bson_to_json(message)
-                
+
                 # Print debug information
                 print(f"Received RabbitMQ message: {json_message}")
-                
+
                 # Save the message to the database
                 self.db_handler.save_message_to_db(json_message)
-                
+
                 # Put the message in the queue for broadcasting
                 asyncio.run_coroutine_threadsafe(
                     self.message_queue.put({
                         'type': 'newMessage',
                         'data': json_message
-                    }), 
+                    }),
                     self.loop
                 )
             except Exception as e:
@@ -161,19 +164,19 @@ class WebSocketServer:
                 lambda: pika.BlockingConnection(pika.ConnectionParameters('localhost'))
             )
             channel = await self.loop.run_in_executor(None, connection.channel)
-            
+
             queue_name = 'Dashboard'
             await self.loop.run_in_executor(
                 None,
                 lambda: channel.queue_declare(queue=queue_name, durable=True)
             )
-            
+
             channel.basic_consume(
                 queue=queue_name,
                 on_message_callback=callback,
                 auto_ack=True
             )
-            
+
             await self.loop.run_in_executor(None, channel.start_consuming)
         except Exception as e:
             print(f"Error in RabbitMQ consumer: {e}")
@@ -181,22 +184,55 @@ class WebSocketServer:
     async def start(self):
         self.loop = asyncio.get_event_loop()
         server = await websockets.serve(self.handle_client, "localhost", 5001)
-        
+
         # Start RabbitMQ consumer in the background
         asyncio.create_task(self.consume_rabbitmq())
-        
+
         print("WebSocket server started on ws://localhost:5001")
         await server.wait_closed()
 
     async def get_analytics_data(self):
         messages = self.db_handler.load_messages()
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+
+        # Network metrics
+        network = psutil.net_io_counters()
+        bytes_sent = network.bytes_sent
+        bytes_recv = network.bytes_recv
+
+        response_times = []
+
+        for msg in messages:
+            try:
+                received_time = datetime.strptime(msg['time'], '%m/%d/%Y, %I:%M:%S %p')
+                processed_time = datetime.strptime(msg['processed_time'], '%m/%d/%Y, %I:%M:%S %p')
+                response_times.append((processed_time - received_time).total_seconds())
+            except (KeyError, ValueError):
+                continue
+
+        avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
 
         analytics = {
             'performanceStats': {
-                'averageResponseTime': 0,  # Will implement these metrics later
                 'peakThroughput': len(messages),
                 'currentLoad': len(self.connected_clients),
-                'uptime': (datetime.now() - self.start_time).total_seconds()
+                'uptime': (datetime.now() - self.start_time).total_seconds(),
+                'cpuUtilization': cpu_percent,
+                'memoryUsage': memory.percent,
+                'diskUsage': disk.percent,
+                'processCount': len(psutil.pids()),
+                'networkStats': {  # Moved inside performanceStats
+                    'bytesSent': network.bytes_sent,
+                    'bytesReceived': network.bytes_recv,
+                    'activeConnections': len(self.connected_clients),
+                    'messageRate': len(messages) / max(1, (datetime.now() - self.start_time).total_seconds())
+                }
             },
             'fileStats': {
                 'totalFilesProcessed': len(messages),
@@ -209,7 +245,8 @@ class WebSocketServer:
             'systemHealth': {
                 'activeConnections': len(self.connected_clients),
                 'queueDepth': len(messages),
-                'successRate': 100 * sum(1 for m in messages if m.get('status') == 'Processed') / len(messages) if messages else 100  # noqa
+                'successRate': 100 * sum(1 for m in messages if m.get('status') == 'Processed') / len(
+                    messages) if messages else 100  # noqa
             }
         }
         return analytics
