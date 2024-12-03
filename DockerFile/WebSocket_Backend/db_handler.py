@@ -5,11 +5,22 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
+def _is_valid_document(document):
+    """Check if document has valid data."""
+    return (
+            document['job_id'] != 'Unknown JobID' or
+            document['content_id'] != 'Unknown ContentID' or
+            document['content_type'] != 'Unknown Type'
+    )
+
+
 class DBHandler:
     def __init__(self):
         self.client = None
         self.db = None
         self.collection = None
+        self.start_time = datetime.now()
 
     def init_db(self):
         """Initialize database connection."""
@@ -27,10 +38,12 @@ class DBHandler:
         try:
             # Debug log the incoming message
             logging.info(f"Attempting to save message: {message}")
-            
+
             # If message is BSON, decode it
             if isinstance(message, bytes):
                 message = BSON(message).decode()
+
+            message['processed_time'] = datetime.now().strftime('%m/%d/%Y, %I:%M:%S %p')
 
             # Extract or generate the timestamp
             timestamp = message.get('time')
@@ -40,11 +53,12 @@ class DBHandler:
             # Create document with proper field mapping
             document = {
                 "time": timestamp,
+                "processed_time": message.get('processed_time'),
                 "job_id": message.get('job_id') or message.get('ID', 'Unknown JobID'),
-                "content_id": (message.get('content_id') or 
-                             message.get('DocumentId') or 
-                             message.get('PictureID') or 
-                             message.get('AudioID', 'Unknown ContentID')),
+                "content_id": (message.get('content_id') or
+                               message.get('DocumentId') or
+                               message.get('PictureID') or
+                               message.get('AudioID', 'Unknown ContentID')),
                 "content_type": message.get('content_type') or self._determine_content_type(message),
                 "file_name": message.get('file_name') or message.get('FileName', 'Unknown File'),
                 "status": message.get('status', 'Processed'),
@@ -52,7 +66,7 @@ class DBHandler:
             }
 
             # Only save if we have valid data
-            if self._is_valid_document(document):
+            if _is_valid_document(document):
                 self.collection.insert_one(document)
                 logging.info(f"Successfully saved message to MongoDB: {document}")
             else:
@@ -72,14 +86,6 @@ class DBHandler:
             return 'Audio'
         return message.get('content_type', 'Unknown Type')
 
-    def _is_valid_document(self, document):
-        """Check if document has valid data."""
-        return (
-            document['job_id'] != 'Unknown JobID' or
-            document['content_id'] != 'Unknown ContentID' or
-            document['content_type'] != 'Unknown Type'
-        )
-
     def load_messages(self):
         """Load messages from the database."""
         try:
@@ -94,7 +100,7 @@ class DBHandler:
                 },
                 {'_id': 0}
             ).sort("time", -1))
-            
+
             logging.info(f"Successfully loaded {len(messages)} messages from MongoDB")
             return messages
         except Exception as e:
@@ -114,3 +120,54 @@ class DBHandler:
             logging.info(f"Cleared {result.deleted_count} invalid messages from MongoDB")
         except Exception as e:
             logging.error(f"Failed to clear invalid messages: {e}")
+
+    async def get_peak_throughput(self):
+        # Get messages processed per minute at peak
+        pipeline = [
+            {"$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m-%d %H:%M", "date": "$timestamp"}},
+                "count": {"$sum": 1}
+            }},
+            {"$sort": {"count": -1}},
+            {"$limit": 1}
+        ]
+        result = await self.db.messages.aggregate(pipeline).to_list(1)
+        return result[0]["count"] if result else 0
+
+    async def get_success_rate(self):
+        total = await self.db.messages.count_documents({})
+        success = await self.db.messages.count_documents({"status": "Processed"})
+        return (success / total * 100) if total > 0 else 100
+
+    async def get_total_files(self):
+        return await self.db.analytics.count_documents({})
+
+    async def get_file_distribution(self):
+        result = await self.db.analytics.aggregate([{"$group": {"_id": "$file_type", "count": {"$sum": 1}}}
+                                                    ]).to_list(None)
+        return {doc["_id"]: doc["count"] for doc in result}
+
+    async def get_largest_file_size(self):
+        result = await self.db.analytics.find_one(
+            sort=[("file_size", -1)]
+        )
+        return result["file_size"] if result else 0
+
+    async def get_avg_file_size(self):
+        result = await self.db.analytics.aggregate([
+            {"$group": {"_id": None, "avg_size": {"$avg": "$file_size"}}}
+        ]).to_list(1)
+        return result[0]["avg_size"] if result else 0
+
+    async def get_queue_depth(self):
+        return await self.db.queue.count_documents({"status": "pending"})
+
+    async def get_analytics_messages(self):
+        try:
+            print(f"Entered get_analytics_messages")
+            messages = await self.db.messages.find().to_list(length=None)
+            print(f"Successfully loaded {len(messages)} messages for analytics")
+            return messages
+        except Exception as e:
+            print(f"Error loading analytics messages: {e}")
+            return []

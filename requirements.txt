@@ -8,6 +8,7 @@ Flask-PyMongo==2.3.0
 Flask-SocketIO==5.3.6
 python-socketio==5.11.3
 python-engineio==4.9.1
+psutil==5.9.5
 
 # Database and Data Handling
 dnspython==2.6.1  

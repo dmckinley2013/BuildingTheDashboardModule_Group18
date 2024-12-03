@@ -102,6 +102,7 @@ def send_bson_obj(job):
         raise
 
 def id_generator(job):
+    start_time = time.time()
     job['ID'] = compute_unique_id(job)
     if 'NumberOfDocuments' in job and job['NumberOfDocuments'] > 0:
         for document in job['Documents']:
@@ -119,6 +120,7 @@ def id_generator(job):
         for video in job['Video']:
             video['ID'] = job['ID']
             video['VideoID'] = compute_unique_id(video)
+    job['processingTime'] = time.time() - start_time
     return job
 
 if __name__ == '__main__':
